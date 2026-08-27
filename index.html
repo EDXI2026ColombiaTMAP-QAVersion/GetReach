@@ -45,7 +45,16 @@
         background: rgba(255,255,255,0.55);
         margin-bottom: 18px;
       }
-      input[type="file"] { width: 100%; }
+      textarea {
+        width: 100%;
+        min-height: 240px;
+        resize: vertical;
+        border: 0;
+        outline: none;
+        background: transparent;
+        font: inherit;
+        color: inherit;
+      }
       button {
         border: 0;
         border-radius: 999px;
@@ -73,28 +82,6 @@
         font-size: 0.9rem;
         color: #8c5e2a;
       }
-      .options {
-        margin: 10px 0 18px;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 10px;
-      }
-      .option {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 12px 14px;
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.6);
-        color: var(--text);
-        font-size: 0.95rem;
-      }
-      .option input {
-        width: 18px;
-        height: 18px;
-        margin: 0;
-      }
       .results {
         margin-top: 22px;
         display: none;
@@ -120,51 +107,30 @@
   <body>
     <main class="card">
       <h1>Multiple Reach | CO team</h1>
-      <p>Upload an Excel file with links in column A, fetch the <strong>Monthly Visits</strong>, and download a new file with the result.</p>
+      <p>Paste a column of links, fetch the <strong>Monthly</strong> value, and copy the result directly from the page.</p>
       <form id="uploadForm">
         <div class="drop">
-          <input id="file" name="file" type="file" accept=".xlsx,.xls" required />
-        </div>
-        <div class="options" aria-label="Metric options">
-          <label class="option">
-            <input type="checkbox" id="optHypestat" />
-            <span>Monthly Visits (HypeStat)</span>
-          </label>
-          <label class="option">
-            <input type="checkbox" id="optSemrushVisits" />
-            <span>Monthly Visits (SEMrush)</span>
-          </label>
-          <label class="option">
-            <input type="checkbox" id="optSimilarWeb" />
-            <span>Monthly Visits (SimilarWeb)</span>
-          </label>
-          <label class="option">
-            <input type="checkbox" id="optSemrushUnique" />
-            <span>Monthly Unique Visitors (SEMrush)</span>
-          </label>
+          <textarea id="links" name="links" rows="10" placeholder="Paste one URL per line..."></textarea>
         </div>
         <div class="row">
           <button id="submitBtn" type="submit">Get Reach</button>
+          <button id="copyBtn" type="button" disabled>Copy Results</button>
           <span id="status" class="status"></span>
         </div>
       </form>
       <div id="warning" class="small"></div>
-      <div class="note">Column A must contain URLs. The result will download as a new `.xlsx` file with metrics in columns B to E.</div>
+      <div class="note">Paste one URL per line. The result appears below and can be copied with one click.</div>
       <div id="results" class="results"></div>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script>
       const form = document.getElementById("uploadForm");
-      const fileInput = document.getElementById("file");
+      const linksInput = document.getElementById("links");
       const statusEl = document.getElementById("status");
       const warningEl = document.getElementById("warning");
       const submitBtn = document.getElementById("submitBtn");
+      const copyBtn = document.getElementById("copyBtn");
       const resultsEl = document.getElementById("results");
-      const optHypestat = document.getElementById("optHypestat");
-      const optSemrushVisits = document.getElementById("optSemrushVisits");
-      const optSimilarWeb = document.getElementById("optSimilarWeb");
-      const optSemrushUnique = document.getElementById("optSemrushUnique");
 
       function normalizeUrl(input) {
         const raw = String(input || "").trim();
@@ -193,61 +159,51 @@
         }
       }
 
-      function parseMetric(text, patterns, fallback = "") {
-        for (const pattern of patterns) {
-          const match = String(text || "").match(pattern);
-          if (match?.[1]) return match[1].replace(/\s+/g, "");
-        }
-        return fallback;
+      function escapeRegex(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function parseMetricNearLabel(text, label) {
+        const source = String(text || "");
+        const pattern = new RegExp(
+          `${escapeRegex(label)}[\\s\\S]{0,120}?([0-9][0-9.,]*\\s*[KM]?)`,
+          "i"
+        );
+        const match = source.match(pattern);
+        if (!match?.[1]) return "N/A";
+        return match[1].replace(/\s+/g, "");
       }
 
       function parseHypestatMonthlyVisits(text) {
-        return parseMetric(
-          text,
-          [
-            /Monthly Visits \(HypeStat\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Visits:\s*([0-9.,]+[KM]?)/i,
-            /Monthly Visits\s+([0-9.,]+[KM]?)/i,
-            /\bMonthly Visits\b\s*\n\s*([0-9.,]+[KM]?)/i
-          ],
-          "N/A"
-        );
+        const byLabel = parseMetricNearLabel(text, "Monthly Visits");
+        return byLabel;
       }
 
       function parseSemrushMonthlyVisits(text) {
-        return parseMetric(
-          text,
-          [
-            /Monthly Visits \(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Visits\s*\(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Visits \(SEMrush\):\s*([0-9.,]+[KM]?)/i
-          ],
-          "N/A"
-        );
+        return parseMetricNearLabel(text, "Monthly Visits (SEMrush)");
       }
 
       function parseSimilarWebMonthlyVisits(text) {
-        return parseMetric(
-          text,
-          [
-            /Monthly Visits \(SimilarWeb\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Visits\s*\(SimilarWeb\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Visits \(SimilarWeb\):\s*([0-9.,]+[KM]?)/i
-          ],
-          "N/A"
-        );
+        return parseMetricNearLabel(text, "Monthly Visits (SimilarWeb)");
       }
 
-      function parseSemrushMonthlyUniqueVisitors(text) {
-        return parseMetric(
-          text,
-          [
-            /Monthly Unique Visitors \(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Unique Visitor \(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
-            /Monthly Unique Visitors \(SEMrush\):\s*([0-9.,]+[KM]?)/i
-          ],
-          "N/A"
-        );
+      function parseNumericValue(value) {
+        const raw = String(value || "").trim();
+        if (!raw || raw === "N/A") return null;
+        const compact = raw.replace(/,/g, "");
+        const match = compact.match(/^([0-9]*\.?[0-9]+)([KM])?$/i);
+        if (!match) return null;
+        const num = Number(match[1]);
+        if (!Number.isFinite(num)) return null;
+        const suffix = (match[2] || "").toUpperCase();
+        if (suffix === "K") return num * 1000;
+        if (suffix === "M") return num * 1000000;
+        return num;
+      }
+
+      function formatMonthlyValue(value) {
+        if (!Number.isFinite(value)) return "N/A";
+        return Math.round(value).toString();
       }
 
       function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
@@ -261,8 +217,7 @@
           return {
             hypestatMonthlyVisits: "N/A",
             semrushMonthlyVisits: "N/A",
-            similarwebMonthlyVisits: "N/A",
-            semrushMonthlyUniqueVisitors: "N/A"
+            similarwebMonthlyVisits: "N/A"
           };
         }
         const directUrl = `https://hypestat.com/info/${encodeURIComponent(domain)}`;
@@ -282,14 +237,12 @@
             const parsed = {
               hypestatMonthlyVisits: parseHypestatMonthlyVisits(body),
               semrushMonthlyVisits: parseSemrushMonthlyVisits(body),
-              similarwebMonthlyVisits: parseSimilarWebMonthlyVisits(body),
-              semrushMonthlyUniqueVisitors: parseSemrushMonthlyUniqueVisitors(body)
+              similarwebMonthlyVisits: parseSimilarWebMonthlyVisits(body)
             };
             if (
               parsed.hypestatMonthlyVisits !== "N/A" ||
               parsed.semrushMonthlyVisits !== "N/A" ||
-              parsed.similarwebMonthlyVisits !== "N/A" ||
-              parsed.semrushMonthlyUniqueVisitors !== "N/A"
+              parsed.similarwebMonthlyVisits !== "N/A"
             ) {
               return parsed;
             }
@@ -301,25 +254,15 @@
         return {
           hypestatMonthlyVisits: "N/A",
           semrushMonthlyVisits: "N/A",
-          similarwebMonthlyVisits: "N/A",
-          semrushMonthlyUniqueVisitors: "N/A"
+          similarwebMonthlyVisits: "N/A"
         };
       }
 
-      function getSelectedMetrics() {
-        const metrics = [];
-        if (optHypestat.checked) metrics.push({ key: "hypestatMonthlyVisits", label: "Monthly Visits (HypeStat)" });
-        if (optSemrushVisits.checked) metrics.push({ key: "semrushMonthlyVisits", label: "Monthly Visits (SEMrush)" });
-        if (optSimilarWeb.checked) metrics.push({ key: "similarwebMonthlyVisits", label: "Monthly Visits (SimilarWeb)" });
-        if (optSemrushUnique.checked) metrics.push({ key: "semrushMonthlyUniqueVisitors", label: "Monthly Unique Visitors (SEMrush)" });
-        return metrics;
-      }
-
-      function makeTable(rows, selectedMetrics) {
+      function makeTable(rows) {
         const table = document.createElement("table");
         table.innerHTML = `
           <thead>
-            <tr><th>Link</th>${selectedMetrics.map((metric) => `<th>${metric.label}</th>`).join("")}</tr>
+            <tr><th>Link</th><th>Monthly</th></tr>
           </thead>
           <tbody></tbody>
         `;
@@ -332,6 +275,10 @@
           tbody.appendChild(tr);
         });
         return table;
+      }
+
+      function makeCopyText(rows) {
+        return rows.map((row) => row.join("\t")).join("\n");
       }
 
       async function mapLimit(items, limit, worker) {
@@ -351,27 +298,24 @@
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const file = fileInput.files[0];
-        if (!file) return;
+        const raw = String(linksInput.value || "").trim();
+        if (!raw) return;
 
         submitBtn.disabled = true;
+        copyBtn.disabled = true;
         warningEl.textContent = "";
-        statusEl.textContent = "Reading Excel...";
+        statusEl.textContent = "Reading links...";
         resultsEl.style.display = "none";
         resultsEl.innerHTML = "";
 
         try {
-          const workbook = await file.arrayBuffer().then((buf) => XLSX.read(buf, { type: "array" }));
-          const sheet = workbook.Sheets[workbook.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+          const rows = raw
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => [line]);
           const urls = rows.map((row) => row?.[0]).filter((value) => isLikelyUrl(value));
           const uniqueDomains = [...new Set(urls.map(extractDomain).filter(Boolean))];
-          const selectedMetrics = getSelectedMetrics();
-
-          if (selectedMetrics.length === 0) {
-            statusEl.textContent = "Select at least one metric to continue.";
-            return;
-          }
 
           statusEl.textContent = `Checking 0 of ${uniqueDomains.length} domains...`;
 
@@ -385,40 +329,35 @@
           const outputRows = rows.map((row) => {
             const original = row?.[0] ?? "";
             if (!isLikelyUrl(original)) {
-              return [original, ...selectedMetrics.map(() => "N/A")];
+              return [original, "N/A"];
             }
             const domain = extractDomain(original);
             const metrics = lookup.get(domain) || {
               hypestatMonthlyVisits: "N/A",
               semrushMonthlyVisits: "N/A",
-              similarwebMonthlyVisits: "N/A",
-              semrushMonthlyUniqueVisitors: "N/A"
+              similarwebMonthlyVisits: "N/A"
             };
-            return [original, ...selectedMetrics.map((metric) => metrics[metric.key] || "N/A")];
+            const numericValues = [
+              parseNumericValue(metrics.hypestatMonthlyVisits),
+              parseNumericValue(metrics.semrushMonthlyVisits),
+              parseNumericValue(metrics.similarwebMonthlyVisits)
+            ].filter((value) => Number.isFinite(value));
+            const average = numericValues.length
+              ? numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length
+              : null;
+            return [original, formatMonthlyValue(average)];
           });
-
-          const outSheet = XLSX.utils.aoa_to_sheet([
-            ["Link", ...selectedMetrics.map((metric) => metric.label)],
-            ...outputRows
-          ]);
-          const outBook = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(outBook, outSheet, "Reach");
-          const buffer = XLSX.write(outBook, { type: "array", bookType: "xlsx" });
-
-          const blob = new Blob([buffer], {
-            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "reach-output.xlsx";
-          a.click();
-          URL.revokeObjectURL(url);
 
           resultsEl.innerHTML = "";
-          resultsEl.appendChild(makeTable(outputRows.slice(0, 20), selectedMetrics));
+          resultsEl.appendChild(makeTable(outputRows.slice(0, 20)));
           resultsEl.style.display = "block";
-          statusEl.textContent = "Done. The Excel file was downloaded successfully.";
+          copyBtn.disabled = false;
+          copyBtn.onclick = async () => {
+            const copyText = makeCopyText(outputRows);
+            await navigator.clipboard.writeText(copyText);
+            statusEl.textContent = "Results copied to clipboard.";
+          };
+          statusEl.textContent = "Done. The results are ready to copy.";
         } catch (error) {
           statusEl.textContent = error.message || "Could not process the file.";
         } finally {
