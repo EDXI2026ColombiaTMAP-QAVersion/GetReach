@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multiple Reach</title>
+    <style>
+      :root {
+        --bg: #f5efe4;
+        --card: #fffaf1;
+        --text: #1f2328;
+        --muted: #6a6f75;
+        --accent: #1f6feb;
+        --border: #e4d8c6;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, Helvetica, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, #ffe9c7 0, transparent 34%),
+          radial-gradient(circle at right 15%, #d7f2ff 0, transparent 30%),
+          var(--bg);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(760px, 100%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: 0 20px 60px rgba(31, 35, 40, 0.12);
+        padding: 32px;
+      }
+      h1 { margin: 0 0 12px; font-size: clamp(2rem, 5vw, 3.4rem); }
+      p { margin: 0 0 20px; color: var(--muted); line-height: 1.5; }
+      .drop {
+        border: 2px dashed #cbb79b;
+        border-radius: 20px;
+        padding: 28px;
+        text-align: center;
+        background: rgba(255,255,255,0.55);
+        margin-bottom: 18px;
+      }
+      input[type="file"] { width: 100%; }
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 20px;
+        font-weight: 700;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--accent), #1647a6);
+        color: white;
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .status { margin-top: 14px; color: var(--muted); min-height: 1.4em; }
+      .note {
+        margin-top: 16px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+      .small {
+        margin-top: 10px;
+        font-size: 0.9rem;
+        color: #8c5e2a;
+      }
+      .options {
+        margin: 10px 0 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px;
+      }
+      .option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.6);
+        color: var(--text);
+        font-size: 0.95rem;
+      }
+      .option input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+      }
+      .results {
+        margin-top: 22px;
+        display: none;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.7);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+      th, td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #ecdfcb;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #f4ead8; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Multiple Reach</h1>
+      <p>Upload an Excel file with links in column A, fetch the <strong>Monthly Visits</strong>, and download a new file with the result.</p>
+      <form id="uploadForm">
+        <div class="drop">
+          <input id="file" name="file" type="file" accept=".xlsx,.xls" required />
+        </div>
+        <div class="options" aria-label="Metric options">
+          <label class="option">
+            <input type="checkbox" id="optHypestat" />
+            <span>Monthly Visits (HypeStat)</span>
+          </label>
+          <label class="option">
+            <input type="checkbox" id="optSemrushVisits" />
+            <span>Monthly Visits (SEMrush)</span>
+          </label>
+          <label class="option">
+            <input type="checkbox" id="optSimilarWeb" />
+            <span>Monthly Visits (SimilarWeb)</span>
+          </label>
+          <label class="option">
+            <input type="checkbox" id="optSemrushUnique" />
+            <span>Monthly Unique Visitors (SEMrush)</span>
+          </label>
+        </div>
+        <div class="row">
+          <button id="submitBtn" type="submit">Get Reach</button>
+          <span id="status" class="status"></span>
+        </div>
+      </form>
+      <div id="warning" class="small"></div>
+      <div class="note">Column A must contain URLs. The result will download as a new `.xlsx` file with metrics in columns B to E.</div>
+      <div id="results" class="results"></div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+      const form = document.getElementById("uploadForm");
+      const fileInput = document.getElementById("file");
+      const statusEl = document.getElementById("status");
+      const warningEl = document.getElementById("warning");
+      const submitBtn = document.getElementById("submitBtn");
+      const resultsEl = document.getElementById("results");
+      const optHypestat = document.getElementById("optHypestat");
+      const optSemrushVisits = document.getElementById("optSemrushVisits");
+      const optSimilarWeb = document.getElementById("optSimilarWeb");
+      const optSemrushUnique = document.getElementById("optSemrushUnique");
+
+      function normalizeUrl(input) {
+        const raw = String(input || "").trim();
+        if (!raw) return "";
+        if (/^https?:\/\//i.test(raw)) return raw;
+        return `https://${raw}`;
+      }
+
+      function isLikelyUrl(input) {
+        const raw = String(input || "").trim();
+        if (!raw) return false;
+        try {
+          const url = new URL(normalizeUrl(raw));
+          return Boolean(url.hostname && url.hostname.includes("."));
+        } catch {
+          return false;
+        }
+      }
+
+      function extractDomain(input) {
+        try {
+          const url = new URL(normalizeUrl(input));
+          return url.hostname.replace(/^www\./i, "").toLowerCase();
+        } catch {
+          return "";
+        }
+      }
+
+      function parseMetric(text, patterns, fallback = "") {
+        for (const pattern of patterns) {
+          const match = String(text || "").match(pattern);
+          if (match?.[1]) return match[1].replace(/\s+/g, "");
+        }
+        return fallback;
+      }
+
+      function parseHypestatMonthlyVisits(text) {
+        return parseMetric(
+          text,
+          [
+            /Monthly Visits \(HypeStat\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Visits:\s*([0-9.,]+[KM]?)/i,
+            /Monthly Visits\s+([0-9.,]+[KM]?)/i,
+            /\bMonthly Visits\b\s*\n\s*([0-9.,]+[KM]?)/i
+          ],
+          "N/A"
+        );
+      }
+
+      function parseSemrushMonthlyVisits(text) {
+        return parseMetric(
+          text,
+          [
+            /Monthly Visits \(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Visits\s*\(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Visits \(SEMrush\):\s*([0-9.,]+[KM]?)/i
+          ],
+          "N/A"
+        );
+      }
+
+      function parseSimilarWebMonthlyVisits(text) {
+        return parseMetric(
+          text,
+          [
+            /Monthly Visits \(SimilarWeb\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Visits\s*\(SimilarWeb\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Visits \(SimilarWeb\):\s*([0-9.,]+[KM]?)/i
+          ],
+          "N/A"
+        );
+      }
+
+      function parseSemrushMonthlyUniqueVisitors(text) {
+        return parseMetric(
+          text,
+          [
+            /Monthly Unique Visitors \(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Unique Visitor \(SEMrush\)\s*[:\-]?\s*([0-9.,]+[KM]?)/i,
+            /Monthly Unique Visitors \(SEMrush\):\s*([0-9.,]+[KM]?)/i
+          ],
+          "N/A"
+        );
+      }
+
+      function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+      }
+
+      async function fetchMetricsForDomain(domain) {
+        if (!domain) {
+          return {
+            hypestatMonthlyVisits: "N/A",
+            semrushMonthlyVisits: "N/A",
+            similarwebMonthlyVisits: "N/A",
+            semrushMonthlyUniqueVisitors: "N/A"
+          };
+        }
+        const directUrl = `https://hypestat.com/info/${encodeURIComponent(domain)}`;
+        const proxyUrls = [
+          directUrl,
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(directUrl)}`,
+          `https://r.jina.ai/http://hypestat.com/info/${encodeURIComponent(domain)}`
+        ];
+
+        for (const url of proxyUrls) {
+          try {
+            const response = await fetchWithTimeout(url, {
+              headers: { "accept": "text/html,text/plain,*/*" }
+            }, 8000);
+            if (!response.ok) continue;
+            const body = await response.text();
+            const parsed = {
+              hypestatMonthlyVisits: parseHypestatMonthlyVisits(body),
+              semrushMonthlyVisits: parseSemrushMonthlyVisits(body),
+              similarwebMonthlyVisits: parseSimilarWebMonthlyVisits(body),
+              semrushMonthlyUniqueVisitors: parseSemrushMonthlyUniqueVisitors(body)
+            };
+            if (
+              parsed.hypestatMonthlyVisits !== "N/A" ||
+              parsed.semrushMonthlyVisits !== "N/A" ||
+              parsed.similarwebMonthlyVisits !== "N/A" ||
+              parsed.semrushMonthlyUniqueVisitors !== "N/A"
+            ) {
+              return parsed;
+            }
+          } catch (_) {
+            // Try the next source.
+          }
+        }
+
+        return {
+          hypestatMonthlyVisits: "N/A",
+          semrushMonthlyVisits: "N/A",
+          similarwebMonthlyVisits: "N/A",
+          semrushMonthlyUniqueVisitors: "N/A"
+        };
+      }
+
+      function getSelectedMetrics() {
+        const metrics = [];
+        if (optHypestat.checked) metrics.push({ key: "hypestatMonthlyVisits", label: "Monthly Visits (HypeStat)" });
+        if (optSemrushVisits.checked) metrics.push({ key: "semrushMonthlyVisits", label: "Monthly Visits (SEMrush)" });
+        if (optSimilarWeb.checked) metrics.push({ key: "similarwebMonthlyVisits", label: "Monthly Visits (SimilarWeb)" });
+        if (optSemrushUnique.checked) metrics.push({ key: "semrushMonthlyUniqueVisitors", label: "Monthly Unique Visitors (SEMrush)" });
+        return metrics;
+      }
+
+      function makeTable(rows) {
+        const table = document.createElement("table");
+        table.innerHTML = `
+          <thead>
+            <tr><th>Link</th><th>Monthly Visits</th></tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector("tbody");
+        rows.forEach(([link, visits]) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${String(link || "").replace(/</g, "&lt;")}</td><td>${visits || ""}</td>`;
+          tbody.appendChild(tr);
+        });
+        return table;
+      }
+
+      async function mapLimit(items, limit, worker) {
+        const results = new Array(items.length);
+        let index = 0;
+
+        async function run() {
+          while (index < items.length) {
+            const current = index++;
+            results[current] = await worker(items[current], current);
+          }
+        }
+
+        await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+        return results;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        submitBtn.disabled = true;
+        warningEl.textContent = "If HypeStat blocks the browser, the app will try a public proxy to read the data.";
+        statusEl.textContent = "Reading Excel...";
+        resultsEl.style.display = "none";
+        resultsEl.innerHTML = "";
+
+        try {
+          const workbook = await file.arrayBuffer().then((buf) => XLSX.read(buf, { type: "array" }));
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+          const urls = rows.map((row) => row?.[0]).filter((value) => isLikelyUrl(value));
+          const uniqueDomains = [...new Set(urls.map(extractDomain).filter(Boolean))];
+          const selectedMetrics = getSelectedMetrics();
+
+          if (selectedMetrics.length === 0) {
+            statusEl.textContent = "Select at least one metric to continue.";
+            return;
+          }
+
+          statusEl.textContent = `Checking 0 of ${uniqueDomains.length} domains...`;
+
+          const results = await mapLimit(uniqueDomains, 2, async (domain, currentIndex) => {
+            statusEl.textContent = `Checking ${currentIndex + 1} of ${uniqueDomains.length} domains... ${domain}`;
+            const metrics = await fetchMetricsForDomain(domain);
+            return [domain, metrics];
+          });
+
+          const lookup = new Map(results);
+          const outputRows = rows.map((row) => {
+            const original = row?.[0] ?? "";
+            if (!isLikelyUrl(original)) {
+              return [original, ...selectedMetrics.map(() => "N/A")];
+            }
+            const domain = extractDomain(original);
+            const metrics = lookup.get(domain) || {
+              hypestatMonthlyVisits: "N/A",
+              semrushMonthlyVisits: "N/A",
+              similarwebMonthlyVisits: "N/A",
+              semrushMonthlyUniqueVisitors: "N/A"
+            };
+            return [original, ...selectedMetrics.map((metric) => metrics[metric.key] || "N/A")];
+          });
+
+          const outSheet = XLSX.utils.aoa_to_sheet([
+            ["Link", ...selectedMetrics.map((metric) => metric.label)],
+            ...outputRows
+          ]);
+          const outBook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(outBook, outSheet, "Reach");
+          const buffer = XLSX.write(outBook, { type: "array", bookType: "xlsx" });
+
+          const blob = new Blob([buffer], {
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "reach-output.xlsx";
+          a.click();
+          URL.revokeObjectURL(url);
+
+          resultsEl.innerHTML = "";
+          resultsEl.appendChild(makeTable(outputRows.slice(0, 20)));
+          resultsEl.style.display = "block";
+          statusEl.textContent = "Done. The Excel file was downloaded successfully.";
+        } catch (error) {
+          statusEl.textContent = error.message || "Could not process the file.";
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
