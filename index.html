@@ -115,6 +115,7 @@
         <div class="row">
           <button id="submitBtn" type="submit">Get Reach</button>
           <button id="copyBtn" type="button" disabled>Copy Results</button>
+          <button id="copyMonthlyBtn" type="button" disabled>Copy Monthly Only</button>
           <span id="status" class="status"></span>
         </div>
       </form>
@@ -130,6 +131,7 @@
       const warningEl = document.getElementById("warning");
       const submitBtn = document.getElementById("submitBtn");
       const copyBtn = document.getElementById("copyBtn");
+      const copyMonthlyBtn = document.getElementById("copyMonthlyBtn");
       const resultsEl = document.getElementById("results");
 
       function normalizeUrl(input) {
@@ -179,10 +181,6 @@
         return byLabel;
       }
 
-      function parseSemrushMonthlyVisits(text) {
-        return parseMetricNearLabel(text, "Monthly Visits (SEMrush)");
-      }
-
       function parseSimilarWebMonthlyVisits(text) {
         return parseMetricNearLabel(text, "Monthly Visits (SimilarWeb)");
       }
@@ -216,7 +214,6 @@
         if (!domain) {
           return {
             hypestatMonthlyVisits: "N/A",
-            semrushMonthlyVisits: "N/A",
             similarwebMonthlyVisits: "N/A"
           };
         }
@@ -236,12 +233,10 @@
             const body = await response.text();
             const parsed = {
               hypestatMonthlyVisits: parseHypestatMonthlyVisits(body),
-              semrushMonthlyVisits: parseSemrushMonthlyVisits(body),
               similarwebMonthlyVisits: parseSimilarWebMonthlyVisits(body)
             };
             if (
               parsed.hypestatMonthlyVisits !== "N/A" ||
-              parsed.semrushMonthlyVisits !== "N/A" ||
               parsed.similarwebMonthlyVisits !== "N/A"
             ) {
               return parsed;
@@ -253,7 +248,6 @@
 
         return {
           hypestatMonthlyVisits: "N/A",
-          semrushMonthlyVisits: "N/A",
           similarwebMonthlyVisits: "N/A"
         };
       }
@@ -281,6 +275,12 @@
         return rows.map((row) => row.join("\t")).join("\n");
       }
 
+      function makeMonthlyOnlyText(rows) {
+        return rows
+          .map((row) => row[1])
+          .join("\n");
+      }
+
       async function mapLimit(items, limit, worker) {
         const results = new Array(items.length);
         let index = 0;
@@ -303,6 +303,7 @@
 
         submitBtn.disabled = true;
         copyBtn.disabled = true;
+        copyMonthlyBtn.disabled = true;
         warningEl.textContent = "";
         statusEl.textContent = "Reading links...";
         resultsEl.style.display = "none";
@@ -334,12 +335,10 @@
             const domain = extractDomain(original);
             const metrics = lookup.get(domain) || {
               hypestatMonthlyVisits: "N/A",
-              semrushMonthlyVisits: "N/A",
               similarwebMonthlyVisits: "N/A"
             };
             const numericValues = [
               parseNumericValue(metrics.hypestatMonthlyVisits),
-              parseNumericValue(metrics.semrushMonthlyVisits),
               parseNumericValue(metrics.similarwebMonthlyVisits)
             ].filter((value) => Number.isFinite(value));
             const average = numericValues.length
@@ -356,6 +355,12 @@
             const copyText = makeCopyText(outputRows);
             await navigator.clipboard.writeText(copyText);
             statusEl.textContent = "Results copied to clipboard.";
+          };
+          copyMonthlyBtn.disabled = false;
+          copyMonthlyBtn.onclick = async () => {
+            const copyText = makeMonthlyOnlyText(outputRows);
+            await navigator.clipboard.writeText(copyText);
+            statusEl.textContent = "Monthly values copied to clipboard.";
           };
           statusEl.textContent = "Done. The results are ready to copy.";
         } catch (error) {
