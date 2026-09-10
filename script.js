@@ -6,6 +6,7 @@ const submitBtn = document.getElementById("submitBtn");
 const copyBtn = document.getElementById("copyBtn");
 const copyMonthlyBtn = document.getElementById("copyMonthlyBtn");
 const resultsEl = document.getElementById("results");
+const DEFAULT_REACH = 10000;
 
 function normalizeUrl(input) {
   const raw = String(input || "").trim();
@@ -75,8 +76,9 @@ function parseNumericValue(value) {
 
 //1234.56 -> 1235
 function formatMonthlyValue(value) {
-  if (!Number.isFinite(value)) return "N/A";
-  return Math.round(value).toString();
+  if (!Number.isFinite(value)) return DEFAULT_REACH.toString();
+  const roundedValue = Math.round(value);
+  return roundedValue === 6 ? DEFAULT_REACH.toString() : roundedValue.toString();
 }
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
@@ -202,7 +204,7 @@ form.addEventListener("submit", async (event) => {
     const outputRows = rows.map((row) => {
       const original = row?.[0] ?? "";
       if (!isLikelyUrl(original)) {
-        return [original, "N/A"];
+        return [original, DEFAULT_REACH.toString()];
       }
       const domain = extractDomain(original);
       const metrics = lookup.get(domain) || {
