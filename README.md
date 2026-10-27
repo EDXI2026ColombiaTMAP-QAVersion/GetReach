@@ -115,12 +115,13 @@ Para cada dominio:
 2. Intenta acceder directamente.
 3. Si falla, usa servicios espejo/proxy.
 4. Lee el contenido de la respuesta como texto.
-5. Busca valores cercanos a la etiqueta `Monthly Visits`.
+5. Busca valores cercanos a las etiquetas `Monthly Visits`, `Monthly Visits (SimilarWeb)` y `Monthly Unique Visitors (SEMrush)`.
 
 Si encuentra datos útiles, devuelve dos métricas:
 
 1. `hypestatMonthlyVisits`
 2. `similarwebMonthlyVisits`
+3. `semrushMonthlyUniqueVisitors`
 
 #### Parseo de texto
 
@@ -129,6 +130,7 @@ La extracción se hace con expresiones regulares.
 - `parseMetricNearLabel()` busca texto cercano a una etiqueta específica.
 - `parseHypestatMonthlyVisits()` reutiliza esa lógica para HypeStat.
 - `parseSimilarWebMonthlyVisits()` hace lo mismo para la variante SimilarWeb.
+- `parseSemrushMonthlyUniqueVisitors()` extrae los visitantes únicos mensuales atribuidos a SEMrush.
 
 Esto permite sacar números aunque la página no tenga una estructura HTML ideal.
 
@@ -201,7 +203,7 @@ La lógica de consulta intenta estas rutas en orden:
 2. `https://api.allorigins.win/raw?url=<url>`
 3. `https://r.jina.ai/http://hypestat.com/info/<dominio>`
 
-Si alguna respuesta contiene valores de "Monthly Visits", la app los usa. Cuando existen datos de más de una fuente, convierte los valores a número y calcula un promedio.
+Si la respuesta contiene valores para esas métricas, la app los usa. Convierte los valores disponibles a número y calcula su promedio, incluyendo `Monthly Unique Visitors (SEMrush)` cuando está presente.
 
 ## Interfaz
 

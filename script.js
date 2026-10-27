@@ -59,6 +59,10 @@ function parseSimilarWebMonthlyVisits(text) {
   return parseMetricNearLabel(text, "Monthly Visits (SimilarWeb)");
 }
 
+function parseSemrushMonthlyUniqueVisitors(text) {
+  return parseMetricNearLabel(text, "Monthly Unique Visitors (SEMrush)");
+}
+
 //12.5K -> 12500
 function parseNumericValue(value) {
   const raw = String(value || "").trim();
@@ -78,7 +82,7 @@ function parseNumericValue(value) {
 function formatMonthlyValue(value) {
   if (!Number.isFinite(value)) return DEFAULT_REACH.toString();
   const roundedValue = Math.round(value);
-  return roundedValue === 6 ? DEFAULT_REACH.toString() : roundedValue.toString();
+  return Math.max(DEFAULT_REACH, roundedValue).toString();
 }
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
@@ -91,7 +95,8 @@ async function fetchMetricsForDomain(domain) {
   if (!domain) {
     return {
       hypestatMonthlyVisits: "N/A",
-      similarwebMonthlyVisits: "N/A"
+      similarwebMonthlyVisits: "N/A",
+      semrushMonthlyUniqueVisitors: "N/A"
     };
   }
   const directUrl = `https://hypestat.com/info/${encodeURIComponent(domain)}`;
@@ -114,9 +119,14 @@ async function fetchMetricsForDomain(domain) {
       const body = await response.text();
       const parsed = {
         hypestatMonthlyVisits: parseHypestatMonthlyVisits(body),
-        similarwebMonthlyVisits: parseSimilarWebMonthlyVisits(body)
+        similarwebMonthlyVisits: parseSimilarWebMonthlyVisits(body),
+        semrushMonthlyUniqueVisitors: parseSemrushMonthlyUniqueVisitors(body)
       };
-      if (parsed.hypestatMonthlyVisits !== "N/A" || parsed.similarwebMonthlyVisits !== "N/A") {
+      if (
+        parsed.hypestatMonthlyVisits !== "N/A" ||
+        parsed.similarwebMonthlyVisits !== "N/A" ||
+        parsed.semrushMonthlyUniqueVisitors !== "N/A"
+      ) {
         return parsed;
       }
     } catch (_) {
@@ -126,7 +136,8 @@ async function fetchMetricsForDomain(domain) {
 
   return {
     hypestatMonthlyVisits: "N/A",
-    similarwebMonthlyVisits: "N/A"
+    similarwebMonthlyVisits: "N/A",
+    semrushMonthlyUniqueVisitors: "N/A"
   };
 }
 
@@ -209,11 +220,13 @@ form.addEventListener("submit", async (event) => {
       const domain = extractDomain(original);
       const metrics = lookup.get(domain) || {
         hypestatMonthlyVisits: "N/A",
-        similarwebMonthlyVisits: "N/A"
+        similarwebMonthlyVisits: "N/A",
+        semrushMonthlyUniqueVisitors: "N/A"
       };
       const numericValues = [
         parseNumericValue(metrics.hypestatMonthlyVisits),
-        parseNumericValue(metrics.similarwebMonthlyVisits)
+        parseNumericValue(metrics.similarwebMonthlyVisits),
+        parseNumericValue(metrics.semrushMonthlyUniqueVisitors)
       ].filter((value) => Number.isFinite(value));
       const average = numericValues.length
         ? numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length
